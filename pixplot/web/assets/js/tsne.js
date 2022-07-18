@@ -1,4 +1,4 @@
-// version: VERSION_NUMBER
+// version: 0.0.113
 
 /**
 *
@@ -2975,7 +2975,7 @@ Filters.prototype.filterImages = function() {
 function Filter(obj) {
   this.values = obj.filter_values || [];
   if (this.values.length <= 1) return;
-  this.selected = null;
+  this.selected = [];
   this.name = obj.filter_name || '';
   this.desktopSelect = document.createElement('div');
   this.desktopSelect.addEventListener('mouseenter', this.show.bind(this));
@@ -3036,8 +3036,8 @@ Filter.prototype.hide = function() {
 Filter.prototype.onChange = function(isDesktop, e) {
   // find the filter
   var elem = e.target;
-  // get the value that's selected for this filter
-  this.selected = this.getSelected(isDesktop, e);
+  // update selected filters list
+  this.getSelected(isDesktop, e);
   this.showSelected();
   this.filterImages();
 }
@@ -3045,19 +3045,24 @@ Filter.prototype.onChange = function(isDesktop, e) {
 Filter.prototype.getSelected = function(isDesktop, e) {
   // mobile select
   if (!isDesktop) return e.target.value;
-  // user unselected the only active selection
+  // user unselected some active selection
   var elem = e.target;
   while (!elem.classList.contains('filter-option')) elem = elem.parentNode;
-  if (elem.classList.contains('active')) return null;
+  // remove that selection from selection list
+  var elemIndex = this.selected.indexOf(elem.getAttribute('data-label'));
+  if (elem.classList.contains('active')) {
+    this.selected.splice(elemIndex, 1);
+    return
+  };
   // user selected a new selection
-  return elem.getAttribute('data-label');
+  this.selected.push(elem.getAttribute('data-label'));
 }
 
 Filter.prototype.showSelected = function() {
-  // show the selected state in the desktop select
+  // show the selected states in the desktop select
   var options = this.desktopSelect.querySelectorAll('.filter-option');
   for (var i=0; i<options.length; i++) {
-    if (options[i].getAttribute('data-label') == this.selected) {
+    if (this.selected.includes(options[i].getAttribute('data-label'))) {
       options[i].classList.add('active');
       options[i].querySelector('input').checked = true;
     } else {
@@ -3065,8 +3070,8 @@ Filter.prototype.showSelected = function() {
       options[i].querySelector('input').checked = false;
     }
   }
-  // highliht the desktop select if there's a selection
-  this.selected
+  // highlight the desktop select if there are any selections
+  this.selected.length > 0
     ? this.desktopSelect.classList.add('has-selection')
     : this.desktopSelect.classList.remove('has-selection');
   // show the selected state in the mobile select
@@ -3074,22 +3079,32 @@ Filter.prototype.showSelected = function() {
 }
 
 Filter.prototype.filterImages = function() {
-  if (!this.selected) {
+  if (this.selected.length == 0) {
     this.imageSelected = function(image) {return true;}
     filters.filterImages();
   } else {
-    var filename = this.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
-        path = getPath(config.data.dir + '/metadata/options/' + filename);
-    get(path, function(json) {
-      var vals = json.reduce(function(obj, i) {
-        obj[i] = true;
-        return obj;
-      }, {})
-      this.imageSelected = function(image) {
-        return image in vals;
-      }
-      filters.filterImages();
-    }.bind(this))
+    
+    jsonSelectedImages = {}; 
+
+    for (var i=0; i<this.selected.length; i++) {
+      var filename = this.selected[i].replace(/\//g, '-').replace(/ /g, '__') + '.json',
+          path = getPath(config.data.dir + '/metadata/options/' + filename);
+
+      get(path, function(json) {
+        var vals = json.reduce(function(obj, j) {
+          obj[j] = true;
+          return obj;
+        }, {})
+        jsonSelectedImages = Object.assign(jsonSelectedImages, vals);
+
+        this.imageSelected = function(image) {
+          return image in jsonSelectedImages;
+        }
+    
+        filters.filterImages();
+      }.bind(this))
+    }
+    
   }
 }
 
